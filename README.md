@@ -1,9 +1,66 @@
-docker run -d --name mosquitto-test -p 1883:1883 -p 9001:9001 eclipse-mosquitto
+# Rusty Valve — промышленный шлюз MQTT + SQLite
 
-docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' mosquitto-test
+## Концепция
 
-docker rm -f mqtt-broker
-docker run -d --name mqtt-broker -p 1883:1883 --privileged eclipse-mosquitto
+Асинхронная, отказоустойчивая шина данных между ПЛК, 1С, SCADA и операторскими интерфейсами.
+
+**Ключевая идея** — разрыв прямой зависимости между приёмом и обработкой данных за счёт двухступенчатой очереди:
+
+1. **MQTT Collector** — лёгкий демон, сохраняет все входящие сообщения в SQLite с меткой времени и статусом `new`.
+2. **SQLite Queue** — единое файловое хранилище с жизненным циклом сообщения `new` → `processing` → `done`. Автоматическая очистка старых записей (по умолчанию 7 дней).
+3. **MQTT Processor** (например, операторский модуль с камерой) — не имеет прямого MQTT-подписчика, а периодически забирает сообщения из очереди. Это позволяет:
+   - отлаживать процессор без потери данных;
+   - перезапускаться без пропусков;
+   - запускать несколько процессоров (с контролем дублирования).
+4. **Обратный канал** — команды (например, из QR-кода) отправляются обратно в ПЛК через обычный MQTT-клиент (топик `plc/command/qr_code`).
+
+## Архитектурная схема
+ПЛК (Modbus RTU/ASCII)
+│
+▼
+[MQTT Publisher] (встроенный в ПЛК или внешний шлюз)
+│
+▼
+MQTT Broker (Mosquitto / EMQX)
+│
+▼
+┌──────────────────────────────────┐
+│ mqtt_collector.py │
+│ (подписка, сохранение в SQLite) │
+└───────────────┬──────────────────┘
+│
+▼
+[SQLite Queue]
+(mqtt_queue.db)
+│
+┌────────┴────────┐
+▼ ▼
+Processor Processor
+(сканер QR) (1С шлюз)
+│ │
+└────────┬────────┘
+▼
+(опционально)
+MQTT Publisher ──► ПЛК
+
+## Маршруты данных
+
+- **ПЛК → MQTT → коллектор → SQLite → процессор → оператор (GUI)**
+- **Оператор (QR‑код) → процессор → MQTT → ПЛК**
+
+## Итог
+
+Архитектура превращает MQTT из «быстрого курьера» в надёжную заводскую шину. Кратковременные отказы клиентов не приводят к пропаже технологических данных.
+
+
+
+# Команды для развёртки
+`docker run -d --name mqtt-broker -p 1883:1883 -p 9001:9001 eclipse-mosquitto`
+
+`docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' mqtt-broker`
+
+`docker rm -f mqtt-broker`
+`docker run -d --name mqtt-broker -p 1883:1883 --privileged eclipse-mosquitto`
 
 ### Для qr
-sudo dnf install zbar
+`sudo dnf install zbar`
