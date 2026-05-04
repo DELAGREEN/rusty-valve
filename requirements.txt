@@ -1,0 +1,7 @@
+numpy==2.4.4
+opencv-python==4.13.0.92
+paho-mqtt==2.1.0
+pillow==12.2.0
+pysimplegui==6.0
+PySimpleGUI4==4.80.7
+pyzbar==0.1.9

@@ -4,3 +4,6 @@ docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' mosq
 
 docker rm -f mqtt-broker
 docker run -d --name mqtt-broker -p 1883:1883 --privileged eclipse-mosquitto
+
+### Для qr
+sudo dnf install zbar
